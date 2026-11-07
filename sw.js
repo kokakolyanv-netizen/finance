@@ -1,6 +1,6 @@
 // Service worker: хранит файлы приложения на телефоне, чтобы оно открывалось без интернета.
 // При изменении файлов приложения увеличьте номер версии.
-const CACHE = 'finance-app-v2';
+const CACHE = 'finance-app-v3';
 const ASSETS = [
   './',
   'index.html',
