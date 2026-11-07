@@ -245,6 +245,45 @@ input.switch:checked::before { transform: translateX(20px); }
 .chip.add { color: var(--text-2); }
 .chips .hint { width: 100%; margin: 0 4px 4px; }
 
+/* Цветные кнопки категорий: мягкий градиент, у выбранной — насыщенный.
+   Контраст текста проверен: не ниже 4,5:1 во всех трёх состояниях. */
+.chip.colored {
+  background: linear-gradient(135deg, var(--s1), var(--s2)); color: var(--st);
+  font-weight: 600; transition: transform .12s, box-shadow .15s;
+}
+.chip.colored:active { transform: scale(.97); }
+.chip.colored.on {
+  background: linear-gradient(135deg, var(--v1), var(--v2)); color: #fff;
+  box-shadow: 0 6px 16px -6px var(--v2);
+}
+.cat-swatch { width: 14px; height: 14px; flex: none; border-radius: 5px; background: linear-gradient(135deg, var(--v1), var(--v2)); }
+.g0  { --s1: #FFE3DC; --s2: #FFD9E4; --st: #8C2A1C; --v1: #D2402E; --v2: #B8325E; }
+.g1  { --s1: #FFE8D4; --s2: #FFDCC8; --st: #8A3A00; --v1: #C24E00; --v2: #B23A12; }
+.g2  { --s1: #FFF1C9; --s2: #FFE4B5; --st: #6E4A00; --v1: #A86500; --v2: #995000; }
+.g3  { --s1: #E2F5D8; --s2: #D4F0E2; --st: #1F5A24; --v1: #2E7D32; --v2: #1F7A55; }
+.g4  { --s1: #D3F3EE; --s2: #CFEAF3; --st: #0B5A50; --v1: #00796B; --v2: #0A6E8A; }
+.g5  { --s1: #D7EEFF; --s2: #DCE4FF; --st: #0D4C7E; --v1: #0F6FB0; --v2: #2D5BC7; }
+.g6  { --s1: #E0E6FF; --s2: #E6DEFF; --st: #26388F; --v1: #3657D6; --v2: #5244D0; }
+.g7  { --s1: #E9E0FF; --s2: #F2DDFF; --st: #4B2A93; --v1: #6A3FD1; --v2: #8E36C4; }
+.g8  { --s1: #F4DEFF; --s2: #FFDDF2; --st: #6A1F87; --v1: #8E2FB5; --v2: #B02C8E; }
+.g9  { --s1: #FFDDED; --s2: #FFE0E5; --st: #8A1C4E; --v1: #C2266E; --v2: #C7334F; }
+.g10 { --s1: #FFDCDC; --s2: #FFE5D6; --st: #8A1F1F; --v1: #C62828; --v2: #C2461C; }
+.g11 { --s1: #E7EAF0; --s2: #DEE3EA; --st: #2D3748; --v1: #4A5568; --v2: #2D3748; }
+@media (prefers-color-scheme: dark) {
+  .g0  { --s1: #3D211C; --s2: #3C1B2A; --st: #FFC3B7; }
+  .g1  { --s1: #3E2614; --s2: #3B1F15; --st: #FFC99E; }
+  .g2  { --s1: #3B2E10; --s2: #3A2610; --st: #FFDA8A; }
+  .g3  { --s1: #1C3320; --s2: #163329; --st: #A9E5B0; }
+  .g4  { --s1: #123430; --s2: #12303A; --st: #96E3D8; }
+  .g5  { --s1: #142E44; --s2: #1A2846; --st: #A3D3FF; }
+  .g6  { --s1: #1C2549; --s2: #241F4A; --st: #B3C1FF; }
+  .g7  { --s1: #261E48; --s2: #301D45; --st: #CDB8FF; }
+  .g8  { --s1: #321C40; --s2: #3B1B37; --st: #E8B4FF; }
+  .g9  { --s1: #3D1A2C; --s2: #3D1B24; --st: #FFB3D4; }
+  .g10 { --s1: #3D1B1B; --s2: #3D2318; --st: #FFB5B5; }
+  .g11 { --s1: #252A33; --s2: #20252D; --st: #C9D1DC; }
+}
+
 /* ===================== Главный экран ===================== */
 .month-switch { display: flex; align-items: center; justify-content: space-between; margin: 2px 0 14px; }
 .month-switch .label { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }

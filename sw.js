@@ -1,12 +1,16 @@
 // Service worker: хранит файлы приложения на телефоне, чтобы оно открывалось без интернета.
-// При изменении файлов приложения увеличьте номер версии.
-const CACHE = 'finance-app-v3';
+//
+// Как выпустить новую версию: поменять VERSION здесь и такие же ?v=… в index.html.
+// Новый service worker скачает все файлы версии сразу и целиком (минуя кэш браузера),
+// после установки приложение само перезагрузится уже в новой версии.
+const VERSION = '0.4.0';
+const CACHE = 'finance-app-' + VERSION;
 const ASSETS = [
   './',
   'index.html',
-  'icons.js',
-  'app.js',
-  'styles.css',
+  'icons.js?v=' + VERSION,
+  'app.js?v=' + VERSION,
+  'styles.css?v=' + VERSION,
   'manifest.webmanifest',
   'icons/icon.svg',
   'icons/icon-192.png',
@@ -15,7 +19,11 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS)).then(() => self.skipWaiting()));
+  event.waitUntil(
+    caches.open(CACHE)
+      .then(cache => cache.addAll(ASSETS.map(url => new Request(url, { cache: 'reload' }))))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener('activate', event => {
@@ -26,8 +34,8 @@ self.addEventListener('activate', event => {
   );
 });
 
-// Сначала отдаём из кэша (мгновенно и офлайн), параллельно обновляем кэш из сети.
-// Запросы к Google (синхронизация) не трогаем.
+// Файлы приложения отдаём из кэша этой версии (мгновенно и без интернета).
+// Запросы к Google (синхронизация) и к курсам валют не трогаем.
 self.addEventListener('fetch', event => {
   const req = event.request;
   if (req.method !== 'GET') return;
@@ -36,23 +44,18 @@ self.addEventListener('fetch', event => {
 
   event.respondWith((async () => {
     const cache = await caches.open(CACHE);
-    const cached = await cache.match(req, { ignoreSearch: true });
-    const network = fetch(req)
-      .then(res => {
-        if (res && res.ok) cache.put(req, res.clone());
-        return res;
-      })
-      .catch(() => null);
-    if (cached) {
-      event.waitUntil(network);
-      return cached;
-    }
-    const res = await network;
-    if (res) return res;
     if (req.mode === 'navigate') {
-      const shell = await cache.match('index.html');
+      const shell = (await cache.match('./')) || (await cache.match('index.html'));
       if (shell) return shell;
     }
-    return new Response('Нет соединения', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+    const cached = await cache.match(req);
+    if (cached) return cached;
+    try {
+      const res = await fetch(req);
+      if (res && res.ok) cache.put(req, res.clone());
+      return res;
+    } catch (e) {
+      return new Response('Нет соединения', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+    }
   })());
 });

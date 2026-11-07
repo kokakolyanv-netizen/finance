@@ -8,7 +8,7 @@
    валюту по курсу на дату операции (открытые курсы fawazahmed0/currency-api).
    ===================================================================== */
 
-const APP_VERSION = '0.3.0';
+const APP_VERSION = '0.4.0';
 const SEED_TIME = '2026-01-01T00:00:00.000Z';
 
 // Базовые категории. ID совпадают с листом «Категории» в Google Таблице.
@@ -381,6 +381,8 @@ const curLabel = c => (CUR[c].sym === c ? c : `${CUR[c].sym} ${c}`);
 /* ===== Данные ===== */
 
 const liveTx = () => S.tx.filter(t => !t.deleted);
+// Цвет кнопки категории: по её порядковому номеру, 12 градиентов по кругу (новые категории получают следующий).
+const catColor = c => 'g' + ((((Number(c.order) || 1) - 1) % 12) + 12) % 12;
 const catMap = () => Object.fromEntries(S.cats.map(c => [c.id, c]));
 const UNKNOWN_CAT = { name: 'Без категории' };
 const sumType = (list, type) => list.reduce((a, t) => a + (t.type === type ? baseAmt(t) : 0), 0);
@@ -1046,6 +1048,7 @@ function renderCatList() {
     .sort((a, b) => (a.hidden - b.hidden) || (a.order - b.order) || a.name.localeCompare(b.name, 'ru'));
   box.innerHTML = list.length ? `<div class="card list-card">
       ${list.map(c => `<button type="button" class="cat-row ${c.hidden ? 'hidden-cat' : ''}" data-act="edit-cat" data-id="${esc(c.id)}">
+        <span class="cat-swatch ${catColor(c)}"></span>
         <span class="name">${esc(c.name)}</span>
         ${c.hidden ? '<span class="tag">скрыта</span>' : ''}
         ${c.dirty ? '<span class="dot" title="Ещё не отправлено в таблицу"></span>' : ''}
@@ -1102,7 +1105,7 @@ function catChipsHTML() {
   const q = norm(qRaw);
   const list = S.cats.filter(c => c.type === FORM.type && (!c.hidden || c.id === FORM.categoryId) && (!q || norm(c.name).includes(q)))
     .sort((a, b) => (a.order - b.order) || a.name.localeCompare(b.name, 'ru'));
-  let html = list.map(c => `<button type="button" class="chip ${c.id === FORM.categoryId ? 'on' : ''}" data-act="tx-cat" data-id="${esc(c.id)}">${esc(c.name)}</button>`).join('');
+  let html = list.map(c => `<button type="button" class="chip colored ${catColor(c)} ${c.id === FORM.categoryId ? 'on' : ''}" data-act="tx-cat" data-id="${esc(c.id)}">${esc(c.name)}</button>`).join('');
   const exact = q && S.cats.some(c => c.type === FORM.type && !c.hidden && norm(c.name) === q);
   if (q && !list.length) html = '<p class="hint">Такой категории нет.</p>';
   if (q && !exact) html += `<button type="button" class="chip add" data-act="tx-quickcat">+ Создать «${esc(qRaw)}»</button>`;
@@ -1364,6 +1367,7 @@ function closeModal(fromPopstate) {
   $('#modal').hidden = true;
   $('#modal-body').innerHTML = '';
   if (!fromPopstate && history.state && history.state.modal) history.back();
+  if (typeof pendingReload !== 'undefined' && pendingReload) setTimeout(() => location.reload(), 300);
 }
 window.addEventListener('popstate', () => { if (UI.modalOpen) closeModal(true); });
 // Иначе браузер при закрытии окна (history.back) сам прокручивает страницу на старое место.
@@ -1529,8 +1533,22 @@ window.addEventListener('resize', () => {
   resizeTimer = setTimeout(() => { if (UI.view === 'reports') renderReports(); }, 200);
 });
 
+// Обновления: новая версия ставится в фоне; когда она готова, приложение перезагружается само
+// (если открыта форма — после её закрытия, чтобы не потерять введённое).
+let swReg = null;
+let pendingReload = false;
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || pendingReload) return;
+    pendingReload = true;
+    if (!UI.modalOpen) location.reload();
+    else toast('Загружена новая версия, она откроется после закрытия формы');
+  });
+  navigator.serviceWorker.register('sw.js').then(reg => { swReg = reg; reg.update().catch(() => {}); }).catch(() => {});
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && swReg) swReg.update().catch(() => {});
+  });
 }
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 
