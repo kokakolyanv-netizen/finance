@@ -416,13 +416,21 @@ table.data th { font-weight: 500; color: var(--text-2); }
 .modal-body .day-list { box-shadow: none; background: var(--surface-2); }
 
 /* ===================== Форма операции ===================== */
-.amount-row { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 26px 0 10px; }
+.amount-row {
+  position: relative; display: flex; align-items: center; justify-content: center; gap: 12px;
+  min-height: 68px; margin: 22px 0 8px;
+}
+/* Поле и скрытый «замер» с одинаковым шрифтом: ширина поля = точная ширина текста. */
+.amount-input, .amount-measure {
+  font-size: 46px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.2;
+  font-variant-numeric: tabular-nums; font-family: inherit;
+}
 .amount-input {
-  width: 1.4ch; max-width: 70%; text-align: center;
-  font-size: 46px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums;
+  width: 40px; min-width: 0; padding: 0; text-align: center;
   color: var(--text); caret-color: var(--text);
 }
 .amount-input::placeholder { color: var(--muted); }
+.amount-measure { position: absolute; left: 0; top: 0; visibility: hidden; white-space: pre; pointer-events: none; }
 .conv { min-height: 20px; margin: 0 0 20px; text-align: center; font-size: 14px; color: var(--text-2); }
 .conv.approx { color: var(--muted); }
 .form-actions { display: grid; gap: 6px; margin-top: 24px; }

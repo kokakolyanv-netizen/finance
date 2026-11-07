@@ -8,7 +8,7 @@
    валюту по курсу на дату операции (открытые курсы fawazahmed0/currency-api).
    ===================================================================== */
 
-const APP_VERSION = '0.4.0';
+const APP_VERSION = '0.4.1';
 const SEED_TIME = '2026-01-01T00:00:00.000Z';
 
 // Базовые категории. ID совпадают с листом «Категории» в Google Таблице.
@@ -205,8 +205,10 @@ function timeLabel(ts) {
   return sameDay ? hm : `${d.getDate()} ${MONTHS_GEN[d.getMonth()]}, ${hm}`;
 }
 function parseAmount(s) {
-  s = String(s || '').replace(/\s/g, '').replace(/,/g, '.');
-  if (!/^\d*\.?\d+(\+\d*\.?\d+)*$/.test(s)) return NaN;
+  // «1 250,5» → 1250.5; «5,» → 5; «120+80» → 200; лишний «+» в конце не мешает.
+  s = String(s || '').replace(/\s/g, '').replace(/,/g, '.').replace(/\++$/, '');
+  const term = '(?:\\d+\\.?\\d*|\\.\\d+)';
+  if (!new RegExp(`^${term}(?:\\+${term})*$`).test(s)) return NaN;
   const total = s.split('+').reduce((a, b) => a + Number(b), 0);
   return Math.round(total * 100) / 100;
 }
@@ -1114,9 +1116,88 @@ function catChipsHTML() {
 }
 function renderChips() { $('#tx-cats').innerHTML = catChipsHTML(); }
 
-function fitAmount() {
+/* ----- Поле суммы ----- */
+
+const AMOUNT_FONT = 46;      // базовый размер цифр, px
+const AMOUNT_FONT_MIN = 16;  // меньше не уменьшаем
+const GROUP_SEP = ' ';  // неразрывный пробел между разрядами
+
+/**
+ * Приводит ввод к виду «1 250 000,75»: только цифры, одна запятая (точка тоже превращается в запятую),
+ * не больше двух знаков после запятой и 12 цифр до неё, без ведущих нулей.
+ * Знак «+» оставляем: «120+80» складывается при сохранении.
+ */
+function formatAmountRaw(raw) {
+  let s = String(raw || '').replace(/\./g, ',').replace(/[^\d,+]/g, '');
+  s = s.replace(/^\++/, '').replace(/\+{2,}/g, '+');
+  return s.split('+').map(t => {
+    const ci = t.indexOf(',');
+    let int = ci >= 0 ? t.slice(0, ci) : t;
+    let dec = ci >= 0 ? t.slice(ci + 1).replace(/,/g, '') : '';
+    int = int.replace(/^0+(?=\d)/, '').slice(0, 12);
+    if (ci >= 0 && !int) int = '0';
+    dec = dec.slice(0, 2);
+    return int.replace(/\B(?=(\d{3})+(?!\d))/g, GROUP_SEP) + (ci >= 0 ? ',' + dec : '');
+  }).join('+');
+}
+const isAmountChar = ch => /[\d,.+]/.test(ch);
+const countAmountChars = s => Array.from(s).filter(isAmountChar).length;
+
+/** Записывает отформатированную сумму и ставит курсор после того же числа значащих символов. */
+function applyAmount(el, raw, caret) {
+  const before = countAmountChars(raw.slice(0, caret));
+  const text = formatAmountRaw(raw);
+  el.value = text;
+  let pos = 0;
+  let n = 0;
+  while (pos < text.length && n < before) {
+    if (isAmountChar(text[pos])) n++;
+    pos++;
+  }
+  if (document.activeElement === el) el.setSelectionRange(pos, pos);
+  layoutAmount();
+}
+
+/** Ширина поля точно по тексту; если сумма длинная — шрифт уменьшается, чтобы число целиком помещалось. */
+function layoutAmount() {
   const el = $('#tx-amount');
-  if (el) el.style.width = Math.max(1, el.value.length) + 0.4 + 'ch';
+  const m = $('#amount-measure');
+  if (!el || !m) return;
+  const row = el.parentElement;
+  const pick = row.querySelector('.cur-pick');
+  const avail = Math.max(60, row.clientWidth - (pick ? pick.offsetWidth : 0) - 12 - 6);
+  m.textContent = el.value || el.placeholder;
+  m.style.fontSize = AMOUNT_FONT + 'px';
+  let w = m.offsetWidth;
+  let size = AMOUNT_FONT;
+  if (w > avail) {
+    size = Math.max(AMOUNT_FONT_MIN, Math.floor(AMOUNT_FONT * avail / w));
+    m.style.fontSize = size + 'px';
+    w = m.offsetWidth;
+  }
+  el.style.fontSize = size + 'px';
+  el.style.width = Math.min(avail, Math.ceil(w) + 4) + 'px';
+}
+
+function bindAmountInput(el) {
+  el.addEventListener('input', () => {
+    applyAmount(el, el.value, el.selectionStart == null ? el.value.length : el.selectionStart);
+    updateConversion();
+  });
+  // Backspace/Delete рядом с пробелом между разрядами удаляет соседнюю цифру, а не «застревает» на пробеле.
+  el.addEventListener('beforeinput', e => {
+    if (e.inputType !== 'deleteContentBackward' && e.inputType !== 'deleteContentForward') return;
+    const a = el.selectionStart;
+    if (a == null || a !== el.selectionEnd) return;
+    const back = e.inputType === 'deleteContentBackward';
+    const sepAt = back ? a - 1 : a;
+    if (el.value[sepAt] !== GROUP_SEP) return;
+    e.preventDefault();
+    const delAt = back ? sepAt - 1 : sepAt + 1;
+    if (delAt < 0 || delAt >= el.value.length) return;
+    applyAmount(el, el.value.slice(0, delAt) + el.value.slice(delAt + 1), delAt);
+    updateConversion();
+  });
 }
 
 /** Подпись «≈ сумма в основной валюте» под суммой; при наличии сети уточняет курс по дате. */
@@ -1127,13 +1208,16 @@ function updateConversion() {
   const my = ++convToken; // поздний ответ сети для прежней валюты/даты будет проигнорирован
   const cur = FORM.currency;
   const b = base();
-  if (cur === b) { box.textContent = ''; box.className = 'conv'; FORM.rate = 1; FORM.rateApprox = false; return; }
+  const raw = $('#tx-amount').value;
+  const amount = parseAmount(raw);
+  // «120+80» → подсказка «= 200»
+  const sumNote = raw.includes('+') && amount > 0 ? `= ${fmtNum(amount)} ${sym(cur)}` : '';
+  if (cur === b) { box.textContent = sumNote; box.className = 'conv'; FORM.rate = 1; FORM.rateApprox = false; return; }
   const date = $('#tx-date').value || todayStr();
-  const amount = parseAmount($('#tx-amount').value);
   const paint = (rate, exact, rateDate) => {
     FORM.rate = rate;
     FORM.rateApprox = !exact;
-    const head = amount > 0 ? `≈ ${fmtMoney(amount * rate)} · ` : '';
+    const head = (sumNote ? sumNote + ' · ' : '') + (amount > 0 ? `≈ ${fmtMoney(amount * rate)} · ` : '');
     box.textContent = `${head}1 ${sym(cur)} = ${nfRate.format(rate)} ${sym(b)}` +
       (exact ? ` на ${shortDate(rateDate)}` : ' · примерный курс, уточнится при подключении к интернету');
     box.className = 'conv' + (exact ? '' : ' approx');
@@ -1181,8 +1265,10 @@ function openTxForm(tx, draft) {
       <button type="button" data-act="tx-type" data-type="income" class="${FORM.type === 'income' ? 'on' : ''}">Доход</button>
     </div>
     <div class="amount-row">
-      <input id="tx-amount" class="amount-input" inputmode="decimal" autocomplete="off" placeholder="0" value="${esc(v.amount)}" aria-label="Сумма">
+      <input id="tx-amount" class="amount-input" type="text" inputmode="decimal" enterkeyhint="done" autocomplete="off"
+        autocorrect="off" spellcheck="false" placeholder="0" value="${esc(formatAmountRaw(v.amount))}" aria-label="Сумма">
       ${curPick('tx-cur', FORM.currency)}
+      <span id="amount-measure" class="amount-measure" aria-hidden="true"></span>
     </div>
     <div class="conv" id="tx-conv"></div>
     <div class="field"><input id="cat-q" type="search" placeholder="Поиск категории" autocomplete="off" aria-label="Поиск категории"></div>
@@ -1197,17 +1283,22 @@ function openTxForm(tx, draft) {
       ${isNew ? '' : '<button type="button" class="btn danger block" data-act="tx-delete">Удалить операцию</button>'}
     </div>`);
   const amountEl = $('#tx-amount');
-  amountEl.addEventListener('input', () => { fitAmount(); updateConversion(); });
+  bindAmountInput(amountEl);
   $('#tx-date').addEventListener('change', updateConversion);
   $('#tx-cur').addEventListener('change', e => {
     FORM.currency = e.target.value;
     e.target.closest('.cur-pick').querySelector('.cp-label').textContent = curLabel(FORM.currency);
+    layoutAmount();
     updateConversion();
   });
   $('#cat-q').addEventListener('input', e => { FORM.q = e.target.value; renderChips(); });
-  fitAmount();
+  layoutAmount();
   updateConversion();
-  if (isNew && !draft) setTimeout(() => amountEl.focus(), 50);
+  // Фокус сразу, в том же нажатии на «+»: иначе iPhone не открывает клавиатуру.
+  if (isNew && !draft) {
+    amountEl.focus({ preventScroll: true });
+    requestAnimationFrame(layoutAmount);
+  }
 }
 
 function readTxDraft() {
@@ -1489,6 +1580,12 @@ document.addEventListener('click', e => {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && UI.modalOpen) ACTIONS['close-modal']();
   if (e.key === 'Enter' && FORM && e.target.tagName === 'INPUT') {
+    if (e.target.id === 'tx-amount' && !FORM.categoryId) {
+      // «Готово» на клавиатуре: спрятать клавиатуру и дать выбрать категорию.
+      e.preventDefault();
+      e.target.blur();
+      return;
+    }
     if (e.target.id === 'cat-q') {
       // Enter в поиске: выбрать единственную найденную категорию или создать новую.
       e.preventDefault();
@@ -1530,7 +1627,10 @@ setInterval(() => {
 let resizeTimer = null;
 window.addEventListener('resize', () => {
   clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => { if (UI.view === 'reports') renderReports(); }, 200);
+  resizeTimer = setTimeout(() => {
+    if (UI.view === 'reports') renderReports();
+    if (UI.modalOpen) layoutAmount();
+  }, 200);
 });
 
 // Обновления: новая версия ставится в фоне; когда она готова, приложение перезагружается само
