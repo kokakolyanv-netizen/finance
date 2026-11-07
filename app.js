@@ -8,7 +8,7 @@
    валюту по курсу на дату операции (открытые курсы fawazahmed0/currency-api).
    ===================================================================== */
 
-const APP_VERSION = '0.4.1';
+const APP_VERSION = '0.4.2';
 const SEED_TIME = '2026-01-01T00:00:00.000Z';
 
 // Базовые категории. ID совпадают с листом «Категории» в Google Таблице.
@@ -1349,10 +1349,11 @@ function renderSettings() {
         <h3>Google Таблица</h3>
         <p class="sub">Операции сохраняются на телефоне и отправляются в таблицу, когда появляется интернет.</p>
         <label class="field-label" for="st-url">Адрес веб-приложения</label>
-        <div class="field"><input id="st-url" type="url" inputmode="url" autocomplete="off" spellcheck="false"
+        <div class="field"><input id="st-url" type="text" inputmode="url" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
           placeholder="https://script.google.com/macros/s/…/exec" value="${esc(S.settings.url)}"></div>
         <label class="field-label" for="st-token">Ключ доступа</label>
-        <div class="field"><input id="st-token" type="password" autocomplete="off" spellcheck="false" value="${esc(S.settings.token)}"></div>
+        <div class="field"><input id="st-token" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(S.settings.token)}"></div>
+        <p class="sub" style="margin:10px 4px 0">Можно вставить в любое поле сообщение с адресом и ключом целиком: приложение само разложит их по полям и подключится.</p>
         <div class="form-actions"><button type="button" class="btn primary block" data-act="save-settings">Сохранить и синхронизировать</button></div>
         <div class="sync-info" id="sync-info"></div>
       </div>
@@ -1379,6 +1380,17 @@ function renderSettings() {
         </ul>
       </div>
       <p class="version">Версия ${APP_VERSION} · курсы: открытые данные currency-api</p>`;
+    // Вставили сообщение целиком (адрес + ключ, хоть с пробелами, хоть без переносов) — раскладываем сами.
+    ['#st-url', '#st-token'].forEach(sel => $(sel).addEventListener('input', e => {
+      const found = extractConnection(e.target.value);
+      if (!found.url && !found.key) return;
+      if (found.url) $('#st-url').value = found.url;
+      if (found.key) $('#st-token').value = found.key;
+      if (found.url && found.key) {
+        e.target.blur();
+        ACTIONS['save-settings']();
+      }
+    }));
     $('#st-base').addEventListener('change', async e => {
       const sel = e.target;
       const ok = await changeBase(sel.value);
@@ -1390,11 +1402,25 @@ function renderSettings() {
   updateSyncInfo();
 }
 
+/**
+ * Ищет в тексте адрес веб-приложения Apps Script и ключ (40 шестнадцатеричных символов).
+ * Работает и когда при вставке строки склеились без пробелов (iPhone убирает переносы в поле).
+ */
+function extractConnection(text) {
+  const t = String(text || '');
+  const urlM = t.match(/https:\/\/script\.google(?:usercontent)?\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec/);
+  const url = urlM ? urlM[0] : '';
+  const rest = url ? t.replace(url, ' ') : t;
+  const keyM = rest.match(/(^|[^0-9a-fA-F])([0-9a-fA-F]{40})(?![0-9a-fA-F])/);
+  return { url, key: keyM ? keyM[2].toLowerCase() : '' };
+}
+
 function updateSyncInfo() {
   const kv = (k, v, cls = '') => `<div class="kv ${cls}"><span class="k">${esc(k)}</span><span class="v">${esc(v)}</span></div>`;
   const box = $('#sync-info');
   if (box) {
     box.innerHTML =
+      kv('Таблица', S.settings.url && S.settings.token ? 'подключена' : 'не подключена', S.settings.url && S.settings.token ? '' : 'err') +
       kv('Последняя синхронизация', S.meta.lastSync ? timeLabel(S.meta.lastSync) : 'ещё не было') +
       kv('Ждут отправки', String(dirtyCount())) +
       kv('Интернет', navigator.onLine ? 'есть' : 'нет') +
@@ -1548,8 +1574,14 @@ const ACTIONS = {
   },
   'cf-save'() { saveCatForm(); },
   'save-settings'() {
-    const url = $('#st-url').value.trim();
-    const token = $('#st-token').value.trim();
+    const raw = $('#st-url').value + ' ' + $('#st-token').value;
+    const found = extractConnection(raw);
+    const url = found.url || $('#st-url').value.trim();
+    // Ключ: без пробелов; если это 40 шестнадцатеричных символов — в нижнем регистре (iPhone любит заглавную первую букву).
+    let token = found.key || $('#st-token').value.replace(/\s/g, '');
+    if (/^[0-9a-fA-F]{40}$/.test(token)) token = token.toLowerCase();
+    $('#st-url').value = url;
+    $('#st-token').value = token;
     if (url && !/^https:\/\/script\.google(usercontent)?\.com\//.test(url)) {
       toast('Адрес должен начинаться с https://script.google.com/');
       return;
